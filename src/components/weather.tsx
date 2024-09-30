@@ -110,7 +110,7 @@ const Weather = () => {
     <div className="app">
       <h1 className="text-5xl mb-6">Weather App</h1>
       <div className="search-input flex flex-col sm:flex-row justify-center w-full sm:w-1/3 mx-auto gap-2 my-4">
-        <label className="xs:mr-2 justify-center items-center flex h-full">
+        <label htmlFor="location" className="xs:mr-2 justify-center items-center flex h-full">
           Location
         </label>
         <input
