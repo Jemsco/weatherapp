@@ -1,20 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import axios from "axios";
-import React from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { WeatherResponse } from "./weather-response";
+import { getGeoLocation, LocationData } from "../services/geo-service";
+import { getWeatherData } from "../services/weather-service";
 
 const KEY = import.meta.env.VITE_REACT_APP_API_KEY;
 
-interface LocationData {
-  country: string;
-  countryCode: string;
-  regionName: string;
-  cityName: string;
-  lat: number;
-  lon: number;
-  zip: string;
-  timezone: string;
-}
 const Weather = () => {
   const [place, setPlace] = useState("");
   const [response, setResponse] = useState<WeatherResponse | null>(null);
@@ -25,24 +15,36 @@ const Weather = () => {
   const [theNextDayHourly, setTheNextDayHourly] = useState(false);
   const [isLocationInitialized, setIsLocationInitialized] = useState(false);
   const inputRef = useRef(null);
-
   const future = isForecast ? response?.forecast?.forecastday : [];
-
   const [locationData, setLocationData] = useState<LocationData | null>(null);
 
+   const fetchWeather = useCallback(async () => {
+     const endpoint = isForecast ? "forecast.json" : "current.json";
+     const url = `${endpoint}?key=${KEY}&q=${place}&days=3&aqi=no`;
+     if (!isFetching) {
+       setIsFetching(true);
+       try {
+         const data = await getWeatherData(url);
+         setResponse(data);
+       } catch (error) {
+         console.error("Error fetching weather data:", error);
+         setResponse(null);
+       } finally {
+         setIsFetching(false);
+       }
+     }
+   }, [isFetching, isForecast, place]);
+
+   //geolocation
   useEffect(() => {
-    getLocation();
+    const fetchLocation = async () => {
+      const data = await getGeoLocation();
+      setLocationData(data);
+    };
+    fetchLocation();
   }, []);
-  async function getLocation() {
-    // it will return the following attributes:
-    // country, countryCode, regionName, city, lat, lon, zip and timezone
-    const res = await axios.get("https://freeipapi.com/api/json");
 
-    if (res.status === 200) {
-      setLocationData(res.data);
-    }
-  }
-
+  // Initialize the location data
   useEffect(() => {
     if (locationData && !isLocationInitialized) {
       setPlace(`${locationData.cityName}, ${locationData.regionName}`);
@@ -53,43 +55,27 @@ const Weather = () => {
     }
   }, [locationData, isLocationInitialized]);
 
+  // Fetch weather data when place changes
   useEffect(() => {
-    if (place.length === 5 && /^\d{5}$/.test(place)) {
-      fetchResponse();
+    if (place.length === 5 && !isNaN(Number(place))) {
+      // If input length is 5 and all are numbers (US zip code)
+      fetchWeather();
+    } else if (place.length > 5 && !isNaN(Number(place))) {
+      // If input length is greater than 5 and all are numbers
+      console.log("Invalid: Input number is longer than 5 characters.");
     } else if (place.length > 0) {
-      // If the input is a city name
-      fetchResponse();
+      // If input is a city name or other valid text
+      fetchWeather();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [place]);
-
-  const fetchResponse = async () => {
-    const endpoint = isForecast ? "forecast.json" : "current.json";
-
-    if (!isFetching) {
-      setIsFetching(true);
-
-      try {
-        const response = await axios.get(
-          `https://api.weatherapi.com/v1/${endpoint}?key=${KEY}&q=${place}&days=3&aqi=no`
-        );
-        setResponse(response.data);
-      } catch (error) {
-        console.log(error);
-        setResponse(null);
-      } finally {
-        setIsFetching(false);
-      }
-    }
-  };
+  }, [place, isForecast, fetchWeather]);
 
   const handleFocus = (event: { target: { select: () => void } }) => {
     event.target.select(); // Select the content when the input gets focus
   };
 
-  const handleSubmit = (event: { preventDefault: () => void }) => {
+  const handleSubmit = async (event: { preventDefault: () => void }) => {
     event.preventDefault();
-    fetchResponse();
+    fetchWeather();
   };
 
   function formatDateString(dateString: string) {
