@@ -1,4 +1,3 @@
-// src/services/geo-service.ts
 import geoApiClient from "./api-clients/geo-api-client";
 
 export interface LocationData {

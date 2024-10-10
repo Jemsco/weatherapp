@@ -1,6 +1,7 @@
+import { CanceledError } from "axios";
 import weatherApiClient from "./api-clients/weather-api-client";
 
-export interface WeatherResponse {
+export interface WeatherData {
   current: {
     temp_f: number;
     feelslike_f: number;
@@ -92,13 +93,17 @@ export interface WeatherResponse {
 
 export const getWeatherData = async (
   url:string,
-): Promise<WeatherResponse> => {
+): Promise<WeatherData> => {
   try {
-    const response = await weatherApiClient.get<WeatherResponse>(
+    const response = await weatherApiClient.get<WeatherData>(
      url
     );
     return response.data;
   } catch (error) {
+    if (error instanceof CanceledError) {
+      console.error("Request canceled:", error);
+      throw error;
+    }
     console.error("Failed to fetch weather data:", error);
     throw error;
   }

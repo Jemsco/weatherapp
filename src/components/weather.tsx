@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { WeatherResponse } from "./weather-response";
 import { getGeoLocation, LocationData } from "../services/geo-service";
-import { getWeatherData } from "../services/weather-service";
+import { getWeatherData, WeatherData } from "../services/weather-service";
+import { AxiosError, CanceledError } from "axios";
 
 const KEY = import.meta.env.VITE_REACT_APP_API_KEY;
 
 const Weather = () => {
   const [place, setPlace] = useState("");
-  const [response, setResponse] = useState<WeatherResponse | null>(null);
+  const [response, setResponse] = useState<WeatherData | null>(null);
   const isForecast = true;
   const [isFetching, setIsFetching] = useState(false);
   const [currentHourly, setCurrentHourly] = useState(false);
@@ -17,6 +17,9 @@ const Weather = () => {
   const inputRef = useRef(null);
   const future = isForecast ? response?.forecast?.forecastday : [];
   const [locationData, setLocationData] = useState<LocationData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  console.log('ERORR',error);
+  
 
    const fetchWeather = useCallback(async () => {
      const endpoint = isForecast ? "forecast.json" : "current.json";
@@ -26,23 +29,45 @@ const Weather = () => {
        try {
          const data = await getWeatherData(url);
          setResponse(data);
-       } catch (error) {
+       } catch (error: unknown) {
+         setError((error as AxiosError).message);
          console.error("Error fetching weather data:", error);
          setResponse(null);
        } finally {
          setIsFetching(false);
        }
-     }
+     } 
+    
    }, [isFetching, isForecast, place]);
 
    //geolocation
-  useEffect(() => {
-    const fetchLocation = async () => {
-      const data = await getGeoLocation();
-      setLocationData(data);
-    };
-    fetchLocation();
-  }, []);
+ useEffect(() => {
+
+   const fetchLocation = async () => {
+     try {
+       const locationData = await getGeoLocation();
+       setLocationData(locationData);
+     } catch (err: unknown) { 
+       if (err instanceof CanceledError) {
+         if (err.name === "AbortError") {
+           console.log("Fetch aborted");
+           setError(`Failed to load location data: ${err.message}`);
+         } else {
+           setError(null);
+         }
+       } else {
+         console.error("An unexpected error occurred:", err);
+       }
+     }
+     finally {
+       setIsFetching(false);
+       setError(null);
+     }
+   };
+
+   fetchLocation();
+ }, [error]);
+
 
   // Initialize the location data
   useEffect(() => {
@@ -122,6 +147,7 @@ const Weather = () => {
         </div>
       </div>
       <div className="italic">Enter a city and state or a zip code</div>
+      {error && <p className="text-red-600 font-bold">{error}</p>}
       {place && place.length > 0 && (
         <>
           {" "}
