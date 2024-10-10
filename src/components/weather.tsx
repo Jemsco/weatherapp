@@ -1,23 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import axios from "axios";
-import React from "react";
-import { WeatherResponse } from "./weather-response";
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { getGeoLocation, LocationData } from "../services/geo-service";
+import { getWeatherData, WeatherData } from "../services/weather-service";
+import { AxiosError, CanceledError } from "axios";
 
 const KEY = import.meta.env.VITE_REACT_APP_API_KEY;
 
-interface LocationData {
-  country: string;
-  countryCode: string;
-  regionName: string;
-  cityName: string;
-  lat: number;
-  lon: number;
-  zip: string;
-  timezone: string;
-}
 const Weather = () => {
   const [place, setPlace] = useState("");
-  const [response, setResponse] = useState<WeatherResponse | null>(null);
+  const [response, setResponse] = useState<WeatherData | null>(null);
   const isForecast = true;
   const [isFetching, setIsFetching] = useState(false);
   const [currentHourly, setCurrentHourly] = useState(false);
@@ -25,24 +15,61 @@ const Weather = () => {
   const [theNextDayHourly, setTheNextDayHourly] = useState(false);
   const [isLocationInitialized, setIsLocationInitialized] = useState(false);
   const inputRef = useRef(null);
-
   const future = isForecast ? response?.forecast?.forecastday : [];
-
   const [locationData, setLocationData] = useState<LocationData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  console.log('ERORR',error);
+  
 
-  useEffect(() => {
-    getLocation();
-  }, []);
-  async function getLocation() {
-    // it will return the following attributes:
-    // country, countryCode, regionName, city, lat, lon, zip and timezone
-    const res = await axios.get("https://freeipapi.com/api/json");
+   const fetchWeather = useCallback(async () => {
+     const endpoint = isForecast ? "forecast.json" : "current.json";
+     const url = `${endpoint}?key=${KEY}&q=${place}&days=3&aqi=no`;
+     if (!isFetching) {
+       setIsFetching(true);
+       try {
+         const data = await getWeatherData(url);
+         setResponse(data);
+       } catch (error: unknown) {
+         setError((error as AxiosError).message);
+         console.error("Error fetching weather data:", error);
+         setResponse(null);
+       } finally {
+         setIsFetching(false);
+       }
+     } 
+    
+   }, [isFetching, isForecast, place]);
 
-    if (res.status === 200) {
-      setLocationData(res.data);
-    }
-  }
+   //geolocation
+ useEffect(() => {
 
+   const fetchLocation = async () => {
+     try {
+       const locationData = await getGeoLocation();
+       setLocationData(locationData);
+     } catch (err: unknown) { 
+       if (err instanceof CanceledError) {
+         if (err.name === "AbortError") {
+           console.log("Fetch aborted");
+           setError(`Failed to load location data: ${err.message}`);
+         } else {
+           setError(null);
+         }
+       } else {
+         console.error("An unexpected error occurred:", err);
+       }
+     }
+     finally {
+       setIsFetching(false);
+       setError(null);
+     }
+   };
+
+   fetchLocation();
+ }, [error]);
+
+
+  // Initialize the location data
   useEffect(() => {
     if (locationData && !isLocationInitialized) {
       setPlace(`${locationData.cityName}, ${locationData.regionName}`);
@@ -53,43 +80,27 @@ const Weather = () => {
     }
   }, [locationData, isLocationInitialized]);
 
+  // Fetch weather data when place changes
   useEffect(() => {
-    if (place.length === 5 && /^\d{5}$/.test(place)) {
-      fetchResponse();
+    if (place.length === 5 && !isNaN(Number(place))) {
+      // If input length is 5 and all are numbers (US zip code)
+      fetchWeather();
+    } else if (place.length > 5 && !isNaN(Number(place))) {
+      // If input length is greater than 5 and all are numbers
+      console.log("Invalid: Input number is longer than 5 characters.");
     } else if (place.length > 0) {
-      // If the input is a city name
-      fetchResponse();
+      // If input is a city name or other valid text
+      fetchWeather();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [place]);
-
-  const fetchResponse = async () => {
-    const endpoint = isForecast ? "forecast.json" : "current.json";
-
-    if (!isFetching) {
-      setIsFetching(true);
-
-      try {
-        const response = await axios.get(
-          `https://api.weatherapi.com/v1/${endpoint}?key=${KEY}&q=${place}&days=3&aqi=no`
-        );
-        setResponse(response.data);
-      } catch (error) {
-        console.log(error);
-        setResponse(null);
-      } finally {
-        setIsFetching(false);
-      }
-    }
-  };
+  }, [place, isForecast, fetchWeather]);
 
   const handleFocus = (event: { target: { select: () => void } }) => {
     event.target.select(); // Select the content when the input gets focus
   };
 
-  const handleSubmit = (event: { preventDefault: () => void }) => {
+  const handleSubmit = async (event: { preventDefault: () => void }) => {
     event.preventDefault();
-    fetchResponse();
+    fetchWeather();
   };
 
   function formatDateString(dateString: string) {
@@ -110,7 +121,7 @@ const Weather = () => {
     <div className="app">
       <h1 className="text-5xl mb-6">Weather App</h1>
       <div className="search-input flex flex-col sm:flex-row justify-center w-full sm:w-1/3 mx-auto gap-2 my-4">
-        <label className="xs:mr-2 justify-center items-center flex h-full">
+        <label htmlFor="location" className="xs:mr-2 justify-center items-center flex h-full">
           Location
         </label>
         <input
@@ -136,6 +147,7 @@ const Weather = () => {
         </div>
       </div>
       <div className="italic">Enter a city and state or a zip code</div>
+      {error && <p className="text-red-600 font-bold">{error}</p>}
       {place && place.length > 0 && (
         <>
           {" "}
